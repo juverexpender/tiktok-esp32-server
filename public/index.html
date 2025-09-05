@@ -77,6 +77,7 @@
             overflow-y: auto; 
             margin-top: 20px;
             font-family: monospace;
+            font-size: 14px;
         }
         
         .url-info { 
@@ -86,13 +87,33 @@
             margin: 15px 0; 
             word-break: break-all;
         }
+        
+        .connection-info {
+            display: flex;
+            justify-content: space-between;
+            margin-bottom: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .info-item {
+            background: rgba(255, 255, 255, 0.1);
+            padding: 10px;
+            border-radius: 8px;
+            margin: 5px;
+            flex-grow: 1;
+            text-align: center;
+        }
     </style>
 </head>
 <body>
     <div class="container">
         <h1>🎵 Control TikTok ESP32</h1>
         
-        <div id="status" class="status disconnected">Desconectado</div>
+        <div class="connection-info">
+            <div class="info-item" id="serverStatus">Servidor: ❌</div>
+            <div class="info-item" id="tiktokStatus">TikTok: ❌</div>
+            <div class="info-item" id="clientsCount">Clientes: 0</div>
+        </div>
         
         <div class="input-group">
             <label for="username">Usuario de TikTok:</label>
@@ -130,7 +151,9 @@
 
     <script>
         const logElement = document.getElementById('log');
-        const statusElement = document.getElementById('status');
+        const serverStatusElement = document.getElementById('serverStatus');
+        const tiktokStatusElement = document.getElementById('tiktokStatus');
+        const clientsCountElement = document.getElementById('clientsCount');
         const connectBtn = document.getElementById('connectBtn');
         const disconnectBtn = document.getElementById('disconnectBtn');
         const usernameInput = document.getElementById('username');
@@ -139,18 +162,85 @@
         let ws = null;
         let serverUrl = window.location.origin;
         serverUrlElement.textContent = serverUrl;
+        let reconnectAttempts = 0;
+        let isConnected = false;
         
-        // Actualizar estado
-        function updateStatus(status, message) {
-            statusElement.textContent = message;
-            statusElement.className = 'status ' + status;
-            
-            if (status === 'connected') {
-                connectBtn.style.display = 'none';
-                disconnectBtn.style.display = 'block';
-            } else {
-                connectBtn.style.display = 'block';
-                disconnectBtn.style.display = 'none';
+        // Conectar WebSocket
+        function connectWebSocket() {
+            try {
+                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+                const wsUrl = `${protocol}//${window.location.host}`;
+                
+                ws = new WebSocket(wsUrl);
+                
+                ws.onopen = function() {
+                    console.log('✅ WebSocket conectado');
+                    serverStatusElement.innerHTML = 'Servidor: ✅';
+                    isConnected = true;
+                    reconnectAttempts = 0;
+                    addLog('Conectado al servidor WebSocket');
+                    checkStatus();
+                };
+                
+                ws.onmessage = function(event) {
+                    try {
+                        const data = JSON.parse(event.data);
+                        handleWebSocketMessage(data);
+                    } catch (e) {
+                        console.log('Mensaje recibido:', event.data);
+                    }
+                };
+                
+                ws.onclose = function() {
+                    console.log('❌ WebSocket desconectado');
+                    serverStatusElement.innerHTML = 'Servidor: ❌';
+                    isConnected = false;
+                    addLog('Desconectado del servidor');
+                    
+                    // Reconectar después de un delay
+                    reconnectAttempts++;
+                    const delay = Math.min(3000, reconnectAttempts * 1000);
+                    setTimeout(connectWebSocket, delay);
+                };
+                
+                ws.onerror = function(error) {
+                    console.error('❌ Error WebSocket:', error);
+                    serverStatusElement.innerHTML = 'Servidor: ❌';
+                    addLog('Error de conexión WebSocket');
+                };
+                
+            } catch (error) {
+                console.error('Error al conectar WebSocket:', error);
+                setTimeout(connectWebSocket, 3000);
+            }
+        }
+        
+        // Manejar mensajes WebSocket
+        function handleWebSocketMessage(data) {
+            switch(data.type) {
+                case 'system':
+                    if (data.message === 'conectado_tiktok') {
+                        tiktokStatusElement.innerHTML = `TikTok: ✅ @${data.username}`;
+                        addLog(`Conectado a TikTok Live de @${data.username}`);
+                    } else if (data.message === 'transmision_finalizada') {
+                        tiktokStatusElement.innerHTML = 'TikTok: ❌';
+                        addLog('Transmisión de TikTok finalizada');
+                    } else if (data.message === 'error_conexion') {
+                        tiktokStatusElement.innerHTML = 'TikTok: ❌';
+                        addLog(`Error de conexión: ${data.error || 'Desconocido'}`);
+                    }
+                    break;
+                    
+                case 'comment':
+                    addLog(`💬 ${data.user}: ${data.message}`);
+                    break;
+                    
+                case 'gift':
+                    addLog(`🎁 ${data.user} envió ${data.gift} x${data.count}`);
+                    break;
+                    
+                default:
+                    addLog(`📦 ${JSON.stringify(data)}`);
             }
         }
         
@@ -162,10 +252,11 @@
                 return;
             }
             
-            updateStatus('connecting', 'Conectando...');
+            tiktokStatusElement.innerHTML = 'TikTok: 🔄';
+            addLog('Conectando a TikTok...');
             
             try {
-                const response = await fetch('/start', {
+                const response = await fetch('/api/start', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -177,20 +268,21 @@
                 addLog(data.message);
                 
                 if (data.status === 'success') {
-                    updateStatus('connected', `Conectado a @${username}`);
+                    connectBtn.style.display = 'none';
+                    disconnectBtn.style.display = 'block';
                 } else {
-                    updateStatus('disconnected', 'Error al conectar');
+                    tiktokStatusElement.innerHTML = 'TikTok: ❌';
                 }
             } catch (error) {
                 addLog('Error: ' + error.message);
-                updateStatus('disconnected', 'Error de conexión');
+                tiktokStatusElement.innerHTML = 'TikTok: ❌';
             }
         }
         
         // Desconectar de TikTok
         async function disconnectTikTok() {
             try {
-                const response = await fetch('/stop', {
+                const response = await fetch('/api/stop', {
                     method: 'POST',
                     headers: {
                         'Content-Type': 'application/json'
@@ -199,41 +291,55 @@
                 
                 const data = await response.json();
                 addLog(data.message);
-                updateStatus('disconnected', 'Desconectado');
+                
+                connectBtn.style.display = 'block';
+                disconnectBtn.style.display = 'none';
+                tiktokStatusElement.innerHTML = 'TikTok: ❌';
             } catch (error) {
                 addLog('Error al desconectar: ' + error.message);
             }
         }
         
         // Enviar comandos de prueba
-        function sendTestCommand(command) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                const message = JSON.stringify({
-                    type: 'comment',
-                    user: 'PruebaDesdeMovil',
-                    message: command,
-                    timestamp: new Date().toISOString()
+        async function sendTestCommand(command) {
+            try {
+                const response = await fetch('/api/test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        type: 'comment',
+                        command: command,
+                        value: 1
+                    })
                 });
-                ws.send(message);
-                addLog('Enviado: ' + command);
-            } else {
-                addLog('Error: No conectado al WebSocket');
+                
+                const data = await response.json();
+                addLog('Comando de prueba enviado: ' + command);
+            } catch (error) {
+                addLog('Error enviando comando: ' + error.message);
             }
         }
         
-        function sendTestGift(giftType, count) {
-            if (ws && ws.readyState === WebSocket.OPEN) {
-                const message = JSON.stringify({
-                    type: 'gift',
-                    user: 'PruebaDesdeMovil',
-                    gift: giftType,
-                    count: count,
-                    timestamp: new Date().toISOString()
+        async function sendTestGift(giftType, count) {
+            try {
+                const response = await fetch('/api/test', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        type: 'gift',
+                        command: giftType,
+                        value: count
+                    })
                 });
-                ws.send(message);
-                addLog(`Enviado regalo: ${giftType} x${count}`);
-            } else {
-                addLog('Error: No conectado al WebSocket');
+                
+                const data = await response.json();
+                addLog(`Regalo de prueba enviado: ${giftType} x${count}`);
+            } catch (error) {
+                addLog('Error enviando regalo: ' + error.message);
             }
         }
         
@@ -250,26 +356,31 @@
             logElement.scrollTop = logElement.scrollHeight;
         }
         
-        // Verificar estado al cargar
+        // Verificar estado del servidor
         async function checkStatus() {
             try {
-                const response = await fetch('/status');
+                const response = await fetch('/api/status');
                 const data = await response.json();
                 
+                clientsCountElement.innerHTML = `Clientes: ${data.clients}`;
+                
                 if (data.connected) {
-                    updateStatus('connected', `Conectado a @${data.username}`);
-                } else {
-                    updateStatus('disconnected', 'Desconectado');
+                    tiktokStatusElement.innerHTML = `TikTok: ✅ @${data.username}`;
+                    connectBtn.style.display = 'none';
+                    disconnectBtn.style.display = 'block';
                 }
             } catch (error) {
-                addLog('Error verificando estado: ' + error.message);
+                console.log('Error verificando estado:', error);
             }
         }
         
         // Inicializar
         window.onload = function() {
-            checkStatus();
-            addLog('Sistema iniciado. Ingresa un usuario de TikTok y haz clic en Conectar.');
+            addLog('Sistema iniciado. Conectando al servidor...');
+            connectWebSocket();
+            
+            // Verificar estado periódicamente
+            setInterval(checkStatus, 5000);
         };
     </script>
 </body>
