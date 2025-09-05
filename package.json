@@ -1,0 +1,17 @@
+{
+  "name": "tiktok-esp32-server",
+  "version": "1.0.0",
+  "description": "Servidor para conectar TikTok Live con ESP32",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  },
+  "dependencies": {
+    "ws": "^8.14.2",
+    "tiktok-live-connector": "^0.9.24",
+    "express": "^4.18.2"
+  },
+  "keywords": ["tiktok", "esp32", "livestream"],
+  "author": "Tu Nombre",
+  "license": "MIT"
+}
