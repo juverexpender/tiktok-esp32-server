@@ -11,7 +11,7 @@ const PORT = process.env.PORT || 3000;
 // Crear servidor HTTP
 const server = http.createServer(app);
 
-// Configurar WebSocket Server
+// Configurar WebSocket Server con CORS
 const wss = new WebSocket.Server({ 
   server,
   handleProtocols: (protocols, request) => {
@@ -19,12 +19,19 @@ const wss = new WebSocket.Server({
   }
 });
 
-// Middleware
-app.use(cors());
+// Middleware CORS para Render.com
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'OPTIONS'],
+  allowedHeaders: ['Content-Type']
+}));
+
 app.use(express.json());
 app.use(express.static('public'));
 
-// Routes
+// Servir archivos estáticos
+app.use(express.static('public'));
+
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
@@ -33,6 +40,12 @@ app.get('/', (req, res) => {
 let tiktokConnection = null;
 let currentUsername = '';
 const clients = new Set();
+
+// Configurar headers CORS para WebSocket
+wss.on('headers', (headers, req) => {
+  headers.push('Access-Control-Allow-Origin: *');
+  headers.push('Access-Control-Allow-Headers: Origin, X-Requested-With, Content-Type, Accept');
+});
 
 // Manejar conexiones WebSocket
 wss.on('connection', function connection(ws, request) {
@@ -48,15 +61,6 @@ wss.on('connection', function connection(ws, request) {
   
   ws.on('message', function incoming(message) {
     console.log('📩 Mensaje del cliente:', message.toString());
-    
-    try {
-      const data = JSON.parse(message);
-      if (data.type === 'ping') {
-        ws.send(JSON.stringify({ type: 'pong' }));
-      }
-    } catch (e) {
-      console.log('Mensaje no JSON:', message.toString());
-    }
   });
   
   ws.on('close', function() {
@@ -158,16 +162,6 @@ function connectToTikTok(username) {
           });
         });
 
-        tiktokConnection.on('disconnected', () => {
-          console.log('🔌 Desconectado de TikTok');
-          broadcastMessage({
-            type: 'system',
-            message: 'desconectado_tiktok',
-            timestamp: new Date().toISOString()
-          });
-          currentUsername = '';
-        });
-
       })
       .catch(err => {
         console.error('❌ Error al conectar con TikTok:', err.message);
@@ -266,55 +260,28 @@ app.post('/api/test/command', (req, res) => {
   });
 });
 
-app.post('/api/test/gift', (req, res) => {
-  const { gift, count } = req.body;
-  
-  if (!gift) {
-    return res.status(400).json({ 
-      error: 'Regalo es requerido', 
-      status: 'error' 
-    });
-  }
-  
-  broadcastMessage({
-    type: 'gift',
-    user: 'usuario_prueba',
-    gift: gift.toLowerCase(),
-    count: count || 1,
-    timestamp: new Date().toISOString()
-  });
-  
-  res.json({ 
-    message: `Regalo de prueba enviado: ${gift} x${count || 1}`, 
-    status: 'success' 
-  });
-});
-
 // Health check endpoint
 app.get('/health', (req, res) => {
   res.json({ 
     status: 'ok', 
     timestamp: new Date().toISOString(),
     uptime: process.uptime(),
-    memory: process.memoryUsage(),
     clients: clients.size
   });
 });
 
-// Manejar 404
-app.use('*', (req, res) => {
-  res.status(404).json({ 
-    error: 'Endpoint no encontrado', 
-    status: 'error' 
+// Test endpoint para WebSocket
+app.get('/test-websocket', (req, res) => {
+  broadcastMessage({
+    type: 'system',
+    message: 'test_websocket',
+    data: 'Este es un mensaje de prueba',
+    timestamp: new Date().toISOString()
   });
-});
-
-// Manejo de errores global
-app.use((error, req, res, next) => {
-  console.error('❌ Error global:', error);
-  res.status(500).json({ 
-    error: 'Error interno del servidor', 
-    status: 'error' 
+  
+  res.json({ 
+    message: 'Mensaje de prueba enviado a WebSocket', 
+    status: 'success' 
   });
 });
 
@@ -323,6 +290,7 @@ server.listen(PORT, () => {
   console.log(`🚀 Servidor ejecutándose en puerto ${PORT}`);
   console.log(`👉 Health check: http://localhost:${PORT}/health`);
   console.log(`👉 Panel control: http://localhost:${PORT}`);
+  console.log(`👉 Test WebSocket: http://localhost:${PORT}/test-websocket`);
 });
 
 // Manejar cierre graceful
@@ -336,27 +304,8 @@ process.on('SIGINT', () => {
     }
   }
   
-  // Cerrar todas las conexiones WebSocket
-  clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.close();
-    }
-  });
-  
   server.close(() => {
     console.log('✅ Servidor apagado correctamente');
     process.exit(0);
   });
 });
-
-// Keep alive para WebSocket connections
-setInterval(() => {
-  clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(JSON.stringify({ 
-        type: 'ping',
-        timestamp: new Date().toISOString()
-      }));
-    }
-  });
-}, 30000); // Ping cada 30 segundos
