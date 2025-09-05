@@ -2,26 +2,77 @@ const WebSocket = require('ws');
 const { WebcastPushConnection } = require('tiktok-live-connector');
 const express = require('express');
 const path = require('path');
+const http = require('http');
 
 const app = express();
 const PORT = process.env.PORT || 3000;
 
-// Servidor WebSocket
-const server = require('http').createServer(app);
-const wss = new WebSocket.Server({ server });
-const clients = new Set();
+// Crear servidor HTTP
+const server = http.createServer(app);
 
-// Servir archivos estáticos
-app.use(express.static('public'));
+// Configurar WebSocket Server con CORS
+const wss = new WebSocket.Server({ 
+  server,
+  handleProtocols: (protocols, request) => {
+    return 'echo-protocol';
+  }
+});
+
+// Middleware CORS
+app.use((req, res, next) => {
+  res.header('Access-Control-Allow-Origin', '*');
+  res.header('Access-Control-Allow-Headers', 'Origin, X-Requested-With, Content-Type, Accept');
+  next();
+});
+
 app.use(express.json());
+app.use(express.static('public'));
 
 app.get('/', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'index.html'));
 });
 
-// Variable para la conexión de TikTok
+// Variables de estado
 let tiktokConnection = null;
 let currentUsername = '';
+const clients = new Set();
+
+// Manejar conexiones WebSocket
+wss.on('connection', function connection(ws, request) {
+  console.log('🔌 Nuevo cliente WebSocket conectado');
+  clients.add(ws);
+  
+  // Enviar mensaje de bienvenida
+  ws.send(JSON.stringify({
+    type: 'system',
+    message: 'conectado_servidor',
+    timestamp: new Date().toISOString()
+  }));
+  
+  ws.on('message', function incoming(message) {
+    console.log('📩 Mensaje del cliente:', message.toString());
+  });
+  
+  ws.on('close', function() {
+    console.log('🔌 Cliente WebSocket desconectado');
+    clients.delete(ws);
+  });
+  
+  ws.on('error', function(error) {
+    console.error('❌ Error WebSocket:', error);
+    clients.delete(ws);
+  });
+});
+
+// Función para broadcast a clientes
+function broadcastMessage(message) {
+  const messageStr = JSON.stringify(message);
+  clients.forEach(client => {
+    if (client.readyState === WebSocket.OPEN) {
+      client.send(messageStr);
+    }
+  });
+}
 
 // Conexión a TikTok Live
 function connectToTikTok(username) {
@@ -36,7 +87,7 @@ function connectToTikTok(username) {
   }
 
   try {
-    console.log(`Intentando conectar a: ${username}`);
+    console.log(`🔗 Intentando conectar a: ${username}`);
     tiktokConnection = new WebcastPushConnection(username, {
       enableExtendedGiftInfo: true,
       processInitialData: true
@@ -47,6 +98,13 @@ function connectToTikTok(username) {
         console.log(`✅ Conectado a la sala de ${state.ownerDisplayName}`);
         currentUsername = username;
         
+        broadcastMessage({
+          type: 'system',
+          message: 'conectado_tiktok',
+          username: username,
+          timestamp: new Date().toISOString()
+        });
+
         // Evento para comentarios
         tiktokConnection.on('chat', data => {
           console.log(`${data.nickname}: ${data.comment}`);
@@ -74,7 +132,8 @@ function connectToTikTok(username) {
           console.log('❌ Transmisión finalizada');
           broadcastMessage({
             type: 'system',
-            message: 'transmision_finalizada'
+            message: 'transmision_finalizada',
+            timestamp: new Date().toISOString()
           });
         });
 
@@ -82,7 +141,9 @@ function connectToTikTok(username) {
           console.error('Error en conexión TikTok:', err);
           broadcastMessage({
             type: 'system',
-            message: 'error_conexion'
+            message: 'error_conexion',
+            error: err.message,
+            timestamp: new Date().toISOString()
           });
         });
       })
@@ -90,28 +151,35 @@ function connectToTikTok(username) {
         console.error('❌ Error al conectar con TikTok:', err);
         broadcastMessage({
           type: 'system',
-          message: 'error_conexion'
+          message: 'error_conexion',
+          error: err.message,
+          timestamp: new Date().toISOString()
         });
       });
   } catch (error) {
     console.error('Error inicializando conexión:', error);
+    broadcastMessage({
+      type: 'system',
+      message: 'error_conexion',
+      error: error.message,
+      timestamp: new Date().toISOString()
+    });
   }
 }
 
-// Endpoint para iniciar conexión
-app.post('/start', (req, res) => {
+// Endpoints de la API
+app.post('/api/start', (req, res) => {
   const { username } = req.body;
   
   if (!username) {
-    return res.status(400).json({ error: 'Username es requerido' });
+    return res.status(400).json({ error: 'Username es requerido', status: 'error' });
   }
   
   connectToTikTok(username);
   res.json({ message: `Conectando a @${username}`, status: 'success' });
 });
 
-// Endpoint para desconectar
-app.post('/stop', (req, res) => {
+app.post('/api/stop', (req, res) => {
   if (tiktokConnection) {
     try {
       tiktokConnection.disconnect();
@@ -120,53 +188,49 @@ app.post('/stop', (req, res) => {
       console.log('Conexión finalizada manualmente');
       res.json({ message: 'Conexión detenida', status: 'success' });
     } catch (e) {
-      res.status(500).json({ error: 'Error al desconectar' });
+      res.status(500).json({ error: 'Error al desconectar', status: 'error' });
     }
   } else {
     res.json({ message: 'No hay conexión activa', status: 'info' });
   }
 });
 
-// Endpoint para estado
-app.get('/status', (req, res) => {
+app.get('/api/status', (req, res) => {
   res.json({ 
     connected: !!tiktokConnection,
-    username: currentUsername
+    username: currentUsername,
+    clients: clients.size,
+    status: 'success'
   });
 });
 
-// Función para enviar mensajes a los ESP32
-function broadcastMessage(message) {
-  const messageStr = JSON.stringify(message);
-  clients.forEach(client => {
-    if (client.readyState === WebSocket.OPEN) {
-      client.send(messageStr);
-    }
-  });
-}
-
-// WebSocket para ESP32
-wss.on('connection', function connection(ws) {
-  console.log('🔌 ESP32 conectado');
-  clients.add(ws);
+// Endpoint para testing
+app.post('/api/test', (req, res) => {
+  const { type, command, value } = req.body;
   
-  ws.on('message', function incoming(message) {
-    console.log('📩 Mensaje del ESP32:', message.toString());
+  broadcastMessage({
+    type: type || 'test',
+    message: command || 'test_command',
+    value: value || 1,
+    timestamp: new Date().toISOString()
   });
   
-  ws.on('close', function() {
-    console.log('🔌 ESP32 desconectado');
-    clients.delete(ws);
-  });
-  
-  // Enviar mensaje de bienvenida
-  ws.send(JSON.stringify({
-    type: 'system',
-    message: 'conectado_servidor'
-  }));
+  res.json({ message: 'Comando de prueba enviado', status: 'success' });
 });
 
+// Iniciar servidor
 server.listen(PORT, () => {
   console.log(`🚀 Servidor ejecutándose en puerto ${PORT}`);
-  console.log(`👉 Ve a https://localhost:${PORT} para acceder al panel de control`);
+  console.log(`👉 Ve a http://localhost:${PORT} para acceder al panel de control`);
+});
+
+// Manejar cierre graceful
+process.on('SIGINT', () => {
+  console.log('Apagando servidor...');
+  if (tiktokConnection) {
+    tiktokConnection.disconnect();
+  }
+  server.close(() => {
+    process.exit(0);
+  });
 });
