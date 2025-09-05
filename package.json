@@ -1,7 +1,7 @@
 {
   "name": "tiktok-esp32-server",
-  "version": "1.0.0",
-  "description": "Servidor para conectar TikTok Live con ESP32 - Control de servos y LEDs mediante comentarios y regalos",
+  "version": "2.0.0",
+  "description": "Servidor para conectar TikTok Live con ESP32 - Control de LEDs y servos mediante comentarios",
   "main": "server.js",
   "scripts": {
     "start": "node server.js",
@@ -14,29 +14,18 @@
     "express": "^4.18.2",
     "cors": "^2.8.5"
   },
-  "devDependencies": {
-    "nodemon": "^3.0.1"
-  },
   "keywords": [
     "tiktok",
     "esp32",
     "livestream",
     "websocket",
-    "servo",
-    "led",
     "iot",
-    "control"
+    "control",
+    "led",
+    "servo"
   ],
   "author": "Juver",
   "license": "MIT",
-  "repository": {
-    "type": "git",
-    "url": "https://github.com/tu-usuario/tiktok-esp32-server.git"
-  },
-  "bugs": {
-    "url": "https://github.com/tu-usuario/tiktok-esp32-server/issues"
-  },
-  "homepage": "https://github.com/tu-usuario/tiktok-esp32-server#readme",
   "engines": {
     "node": ">=16.0.0",
     "npm": ">=8.0.0"
