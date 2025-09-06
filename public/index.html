@@ -5,103 +5,42 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Control TikTok ESP32</title>
     <style>
-        * { box-sizing: border-box; margin: 0; padding: 0; }
-        body { 
-            font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; 
-            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-            color: white; 
-            padding: 20px; 
-            min-height: 100vh;
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 800px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f0f0f0;
         }
-        .container { 
-            max-width: 800px; 
-            margin: 0 auto; 
-            background: rgba(255, 255, 255, 0.1); 
-            border-radius: 15px; 
-            padding: 20px; 
-            backdrop-filter: blur(10px);
+        .container {
+            background: white;
+            padding: 20px;
+            border-radius: 10px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
         }
-        h1, h2 { text-align: center; margin-bottom: 20px; }
-        .status { 
-            padding: 15px; 
-            margin: 15px 0; 
-            border-radius: 10px; 
+        h1 {
+            color: #ff0055;
             text-align: center;
-            font-weight: bold;
         }
-        .connected { background: rgba(76, 175, 80, 0.3); border: 2px solid #4CAF50; }
-        .disconnected { background: rgba(244, 67, 54, 0.3); border: 2px solid #F44336; }
-        .connecting { background: rgba(255, 193, 7, 0.3); border: 2px solid #FFC107; }
-        
-        .control-panel { 
-            display: grid; 
-            grid-template-columns: 1fr 1fr; 
-            gap: 15px; 
-            margin: 20px 0; 
-        }
-        @media (max-width: 600px) {
-            .control-panel { grid-template-columns: 1fr; }
-        }
-        
-        .input-group { margin-bottom: 15px; }
-        label { display: block; margin-bottom: 5px; font-weight: bold; }
-        input, button { 
-            width: 100%; 
-            padding: 12px; 
-            border: none; 
-            border-radius: 8px; 
-            font-size: 16px; 
-        }
-        input { background: rgba(255, 255, 255, 0.9); color: #333; }
-        button { 
-            background: #FF2D55; 
-            color: white; 
-            cursor: pointer; 
-            transition: background 0.3s; 
-            font-weight: bold;
-        }
-        button:hover { background: #FF0055; }
-        button:disabled { background: #ccc; cursor: not-allowed; }
-        
-        .command-btn { 
-            background: #5E35B1; 
-            margin: 5px 0; 
-        }
-        .command-btn:hover { background: #7E57C2; }
-        
-        .log { 
-            background: rgba(0, 0, 0, 0.3); 
-            border-radius: 8px; 
-            padding: 15px; 
-            height: 200px; 
-            overflow-y: auto; 
-            margin-top: 20px;
-            font-family: monospace;
-            font-size: 14px;
-        }
-        
-        .url-info { 
-            background: rgba(255, 255, 255, 0.2); 
-            padding: 15px; 
-            border-radius: 8px; 
-            margin: 15px 0; 
-            word-break: break-all;
-        }
-        
-        .connection-info {
-            display: flex;
-            justify-content: space-between;
-            margin-bottom: 15px;
-            flex-wrap: wrap;
-        }
-        
-        .info-item {
-            background: rgba(255, 255, 255, 0.1);
+        .status {
             padding: 10px;
-            border-radius: 8px;
-            margin: 5px;
-            flex-grow: 1;
+            margin: 10px 0;
+            border-radius: 5px;
             text-align: center;
+        }
+        .online { background: #d4edda; color: #155724; }
+        .offline { background: #f8d7da; color: #721c24; }
+        button {
+            background: #ff0055;
+            color: white;
+            border: none;
+            padding: 10px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            margin: 5px;
+        }
+        button:hover {
+            background: #cc0044;
         }
     </style>
 </head>
@@ -109,279 +48,68 @@
     <div class="container">
         <h1>🎵 Control TikTok ESP32</h1>
         
-        <div class="connection-info">
-            <div class="info-item" id="serverStatus">Servidor: ❌</div>
-            <div class="info-item" id="tiktokStatus">TikTok: ❌</div>
-            <div class="info-item" id="clientsCount">Clientes: 0</div>
+        <div id="status" class="status offline">
+            Servidor: Verificando...
         </div>
         
-        <div class="input-group">
-            <label for="username">Usuario de TikTok:</label>
-            <input type="text" id="username" placeholder="Ej: usertiktok" value="">
-            <button onclick="connectTikTok()" id="connectBtn">Conectar a TikTok Live</button>
-            <button onclick="disconnectTikTok()" id="disconnectBtn" style="display:none; margin-top:10px; background:#666;">Desconectar</button>
+        <h2>Verificación de Conexión</h2>
+        <button onclick="testHealth()">Probar Health Check</button>
+        <button onclick="testEndpoint()">Probar Endpoint</button>
+        
+        <h2>Información del Sistema</h2>
+        <div id="info">
+            <p>Esta es la interfaz básica de control.</p>
+            <p>El servidor debe estar ejecutándose en Render.com</p>
         </div>
         
-        <div class="url-info">
-            <h3>📋 URL para ESP32:</h3>
-            <p id="serverUrl">Cargando...</p>
-            <button onclick="copyUrl()">Copiar URL</button>
+        <h2>Logs</h2>
+        <div id="logs" style="background: #000; color: #0f0; padding: 10px; height: 200px; overflow-y: scroll; font-family: monospace;">
+            Iniciando sistema...<br>
         </div>
-        
-        <h2>Comandos de Prueba:</h2>
-        <div class="control-panel">
-            <button class="command-btn" onclick="sendTestCommand('servo1')">Mover Servo 1</button>
-            <button class="command-btn" onclick="sendTestCommand('servo2')">Mover Servo 2</button>
-            <button class="command-btn" onclick="sendTestCommand('luzroja')">LED Rojo</button>
-            <button class="command-btn" onclick="sendTestCommand('luzverde')">LED Verde</button>
-            <button class="command-btn" onclick="sendTestCommand('luzazul')">LED Azul</button>
-            <button class="command-btn" onclick="sendTestCommand('apagar')">Apagar LEDs</button>
-        </div>
-        
-        <h2>Regalos de Prueba:</h2>
-        <div class="control-panel">
-            <button class="command-btn" onclick="sendTestGift('rose', 1)">Enviar Rosa 🌹</button>
-            <button class="command-btn" onclick="sendTestGift('coin', 5)">Enviar Monedas 🪙</button>
-            <button class="command-btn" onclick="sendTestGift('tiktok', 1)">Enviar TikTok 🎵</button>
-        </div>
-        
-        <h2>Log de Actividad:</h2>
-        <div id="log" class="log"></div>
     </div>
 
     <script>
-        const logElement = document.getElementById('log');
-        const serverStatusElement = document.getElementById('serverStatus');
-        const tiktokStatusElement = document.getElementById('tiktokStatus');
-        const clientsCountElement = document.getElementById('clientsCount');
-        const connectBtn = document.getElementById('connectBtn');
-        const disconnectBtn = document.getElementById('disconnectBtn');
-        const usernameInput = document.getElementById('username');
-        const serverUrlElement = document.getElementById('serverUrl');
-        
-        let ws = null;
-        let serverUrl = window.location.origin;
-        serverUrlElement.textContent = serverUrl;
-        let reconnectAttempts = 0;
-        let isConnected = false;
-        
-        // Conectar WebSocket
-        function connectWebSocket() {
-            try {
-                const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-                const wsUrl = `${protocol}//${window.location.host}`;
-                
-                ws = new WebSocket(wsUrl);
-                
-                ws.onopen = function() {
-                    console.log('✅ WebSocket conectado');
-                    serverStatusElement.innerHTML = 'Servidor: ✅';
-                    isConnected = true;
-                    reconnectAttempts = 0;
-                    addLog('Conectado al servidor WebSocket');
-                    checkStatus();
-                };
-                
-                ws.onmessage = function(event) {
-                    try {
-                        const data = JSON.parse(event.data);
-                        handleWebSocketMessage(data);
-                    } catch (e) {
-                        console.log('Mensaje recibido:', event.data);
-                    }
-                };
-                
-                ws.onclose = function() {
-                    console.log('❌ WebSocket desconectado');
-                    serverStatusElement.innerHTML = 'Servidor: ❌';
-                    isConnected = false;
-                    addLog('Desconectado del servidor');
-                    
-                    // Reconectar después de un delay
-                    reconnectAttempts++;
-                    const delay = Math.min(3000, reconnectAttempts * 1000);
-                    setTimeout(connectWebSocket, delay);
-                };
-                
-                ws.onerror = function(error) {
-                    console.error('❌ Error WebSocket:', error);
-                    serverStatusElement.innerHTML = 'Servidor: ❌';
-                    addLog('Error de conexión WebSocket');
-                };
-                
-            } catch (error) {
-                console.error('Error al conectar WebSocket:', error);
-                setTimeout(connectWebSocket, 3000);
-            }
-        }
-        
-        // Manejar mensajes WebSocket
-        function handleWebSocketMessage(data) {
-            switch(data.type) {
-                case 'system':
-                    if (data.message === 'conectado_tiktok') {
-                        tiktokStatusElement.innerHTML = `TikTok: ✅ @${data.username}`;
-                        addLog(`Conectado a TikTok Live de @${data.username}`);
-                    } else if (data.message === 'transmision_finalizada') {
-                        tiktokStatusElement.innerHTML = 'TikTok: ❌';
-                        addLog('Transmisión de TikTok finalizada');
-                    } else if (data.message === 'error_conexion') {
-                        tiktokStatusElement.innerHTML = 'TikTok: ❌';
-                        addLog(`Error de conexión: ${data.error || 'Desconocido'}`);
-                    }
-                    break;
-                    
-                case 'comment':
-                    addLog(`💬 ${data.user}: ${data.message}`);
-                    break;
-                    
-                case 'gift':
-                    addLog(`🎁 ${data.user} envió ${data.gift} x${data.count}`);
-                    break;
-                    
-                default:
-                    addLog(`📦 ${JSON.stringify(data)}`);
-            }
-        }
-        
-        // Conectar a TikTok
-        async function connectTikTok() {
-            const username = usernameInput.value.trim();
-            if (!username) {
-                alert('Por favor ingresa un usuario de TikTok');
-                return;
-            }
-            
-            tiktokStatusElement.innerHTML = 'TikTok: 🔄';
-            addLog('Conectando a TikTok...');
-            
-            try {
-                const response = await fetch('/api/start', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({ username })
-                });
-                
-                const data = await response.json();
-                addLog(data.message);
-                
-                if (data.status === 'success') {
-                    connectBtn.style.display = 'none';
-                    disconnectBtn.style.display = 'block';
-                } else {
-                    tiktokStatusElement.innerHTML = 'TikTok: ❌';
-                }
-            } catch (error) {
-                addLog('Error: ' + error.message);
-                tiktokStatusElement.innerHTML = 'TikTok: ❌';
-            }
-        }
-        
-        // Desconectar de TikTok
-        async function disconnectTikTok() {
-            try {
-                const response = await fetch('/api/stop', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    }
-                });
-                
-                const data = await response.json();
-                addLog(data.message);
-                
-                connectBtn.style.display = 'block';
-                disconnectBtn.style.display = 'none';
-                tiktokStatusElement.innerHTML = 'TikTok: ❌';
-            } catch (error) {
-                addLog('Error al desconectar: ' + error.message);
-            }
-        }
-        
-        // Enviar comandos de prueba
-        async function sendTestCommand(command) {
-            try {
-                const response = await fetch('/api/test', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        type: 'comment',
-                        command: command,
-                        value: 1
-                    })
-                });
-                
-                const data = await response.json();
-                addLog('Comando de prueba enviado: ' + command);
-            } catch (error) {
-                addLog('Error enviando comando: ' + error.message);
-            }
-        }
-        
-        async function sendTestGift(giftType, count) {
-            try {
-                const response = await fetch('/api/test', {
-                    method: 'POST',
-                    headers: {
-                        'Content-Type': 'application/json'
-                    },
-                    body: JSON.stringify({
-                        type: 'gift',
-                        command: giftType,
-                        value: count
-                    })
-                });
-                
-                const data = await response.json();
-                addLog(`Regalo de prueba enviado: ${giftType} x${count}`);
-            } catch (error) {
-                addLog('Error enviando regalo: ' + error.message);
-            }
-        }
-        
-        // Copiar URL
-        function copyUrl() {
-            navigator.clipboard.writeText(serverUrl);
-            addLog('URL copiada al portapapeles');
-        }
-        
-        // Agregar al log
+        // Función para agregar logs
         function addLog(message) {
+            const logs = document.getElementById('logs');
             const now = new Date().toLocaleTimeString();
-            logElement.innerHTML += `[${now}] ${message}<br>`;
-            logElement.scrollTop = logElement.scrollHeight;
+            logs.innerHTML += `[${now}] ${message}<br>`;
+            logs.scrollTop = logs.scrollHeight;
         }
-        
-        // Verificar estado del servidor
-        async function checkStatus() {
+
+        // Probar health check
+        async function testHealth() {
             try {
-                const response = await fetch('/api/status');
+                addLog('Probando health check...');
+                const response = await fetch('/health');
                 const data = await response.json();
-                
-                clientsCountElement.innerHTML = `Clientes: ${data.clients}`;
-                
-                if (data.connected) {
-                    tiktokStatusElement.innerHTML = `TikTok: ✅ @${data.username}`;
-                    connectBtn.style.display = 'none';
-                    disconnectBtn.style.display = 'block';
-                }
+                addLog(`Health check: ${data.status} - ${data.message}`);
+                document.getElementById('status').className = 'status online';
+                document.getElementById('status').textContent = 'Servidor: ONLINE ✅';
             } catch (error) {
-                console.log('Error verificando estado:', error);
+                addLog('Error en health check: ' + error.message);
+                document.getElementById('status').className = 'status offline';
+                document.getElementById('status').textContent = 'Servidor: OFFLINE ❌';
             }
         }
-        
-        // Inicializar
-        window.onload = function() {
-            addLog('Sistema iniciado. Conectando al servidor...');
-            connectWebSocket();
-            
-            // Verificar estado periódicamente
-            setInterval(checkStatus, 5000);
-        };
+
+        // Probar endpoint simple
+        async function testEndpoint() {
+            try {
+                addLog('Probando endpoint /test...');
+                const response = await fetch('/test');
+                const data = await response.json();
+                addLog(`Test: ${data.message}`);
+            } catch (error) {
+                addLog('Error en test: ' + error.message);
+            }
+        }
+
+        // Verificar automáticamente al cargar
+        window.addEventListener('load', () => {
+            addLog('Página cargada correctamente');
+            testHealth();
+        });
     </script>
 </body>
 </html>
